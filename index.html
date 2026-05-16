@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Billionaire Dice: Hey Billy!</title>
+    <style>
+        :root {
+            --bg: #0a0a0a;
+            --card: #151515;
+            --accent: #00ffcc;
+            --boss: #ffcc00;
+            --text: #ffffff;
+            --danger: #ff4444;
+        }
+
+        body { 
+            background: var(--bg); color: var(--text); 
+            font-family: 'Courier New', Courier, monospace; 
+            margin: 0; display: flex; flex-direction: column; height: 100vh;
+            align-items: center; justify-content: center; overflow: hidden;
+        }
+
+        #start-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: var(--bg); z-index: 5000; display: flex;
+            flex-direction: column; justify-content: center; align-items: center;
+            text-align: center;
+        }
+
+        .hud {
+            display: flex; gap: 40px; background: var(--card); padding: 10px 30px;
+            border-radius: 15px 15px 0 0; border: 1px solid #333; border-bottom: none;
+        }
+        .hud-item { text-align: center; }
+        .hud-label { font-size: 0.7rem; color: #666; display: block; }
+        .hud-val { font-size: 1.3rem; font-weight: bold; }
+
+        #game-board {
+            display: flex; flex-direction: row; overflow-x: auto;
+            width: 100%; max-width: 650px; height: 440px;
+            background: var(--card); border: 1px solid #333;
+            padding: 15px; gap: 8px; align-items: flex-start; scroll-behavior: smooth;
+        }
+
+        .die-cell.win-100 { 
+            background: var(--accent) !important; 
+            color: #000 !important; 
+            font-weight: 900 !important; 
+            border-color: #fff !important;
+            box-shadow: 0 0 20px var(--accent);
+            animation: pulse 0.5s infinite alternate;
+        }
+        @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.1); } }
+        .shake { animation: shake 0.5s; }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+
+        .sequence-column {
+            display: flex; flex-direction: column; gap: 4px;
+            min-width: 65px; background: rgba(255,255,255,0.02);
+            padding: 8px; border-radius: 6px; border: 1px solid #333;
+            animation: fadeIn 0.8s forwards;
+        }
+
+        .die-cell {
+            height: 38px; width: 48px; display: flex; align-items: center; justify-content: center;
+            background: #111; border: 1px solid #222; border-radius: 4px;
+            font-size: 1rem; color: #444; opacity: 0; transition: all 0.4s ease-out;
+        }
+
+        .die-cell.active { color: var(--text); border-color: var(--accent); background: #1a1a1a; opacity: 1; }
+        .die-cell.max-hit { background: var(--boss) !important; color: #000 !important; font-weight: 900 !important; border-color: #fff !important; }
+        .die-cell.final.active { border-color: var(--boss); color: var(--boss); font-weight: bold; }
+        
+        .col-prob { font-size: 0.7rem; color: var(--accent); text-align: center; margin-top: 8px; font-weight: bold; visibility: hidden; }
+        .col-prob.show { visibility: visible; }
+
+        .controls {
+            background: var(--card); width: 100%; max-width: 650px;
+            padding: 25px; display: flex; justify-content: center;
+            border: 1px solid #333; border-top: none; border-radius: 0 0 15px 15px;
+            box-sizing: border-box;
+        }
+
+        button { padding: 15px 30px; font-size: 1rem; font-weight: bold; cursor: pointer; border: none; border-radius: 8px; text-transform: uppercase; }
+        #rollBtn { background: var(--accent); color: #000; width: 100%; transition: 0.3s;}
+        button:disabled { opacity: 0.1; cursor: not-allowed; }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        #bonus-alert {
+            position: fixed; top: 40%; background: var(--boss); color: #000;
+            padding: 15px 30px; font-weight: 900; border-radius: 8px; display: none; z-index: 2000;
+            font-size: 1.5rem; box-shadow: 0 0 40px rgba(255, 204, 0, 0.6); pointer-events: none;
+        }
+
+        #end-screen {
+            display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: #1a1a1a; padding: 40px; border-radius: 20px; border: 3px solid var(--boss);
+            text-align: center; z-index: 3000; width: 360px; box-shadow: 0 0 100px #000;
+        }
+        .achievement-list { font-size: 0.85rem; color: #aaa; text-align: left; margin: 15px auto; width: 95%; line-height: 1.6;}
+    </style>
+</head>
+<body>
+
+<div id="start-screen">
+    <h1 style="color:var(--boss); font-size: 2.5rem; margin-bottom: 0;">Hey! Billy!</h1>
+    <h2 style="margin-top: 10px;">Ready to be a billionaire today?</h2>
+    <button onclick="startGame()" style="background:var(--accent); color:#000; margin-top: 30px; padding: 20px 40px; font-size: 1.2rem; border-radius: 10px;">LET'S ROLL</button>
+</div>
+
+<div id="bonus-alert">BONUS!</div>
+
+<div class="hud">
+    <div class="hud-item"><span class="hud-label">TIME</span><span class="hud-val" id="timer">05:00</span></div>
+    <div class="hud-item"><span class="hud-label">BANK</span><span class="hud-val" id="bank" style="color:var(--accent)">0</span></div>
+</div>
+
+<div id="game-board"></div>
+
+<div id="end-screen">
+    <h2 style="margin:0; color:var(--boss)">Hey! Billy!</h2>
+    <h1 id="end-title" style="margin:5px 0; font-size: 1.2rem;"></h1>
+    <div id="end-stats" style="margin: 15px 0; font-size: 0.9rem; font-weight: bold;"></div>
+    <div id="achievements" class="achievement-list"></div>
+    <button onclick="location.reload()" style="background:var(--accent); color:#000; padding: 12px 25px; border-radius: 8px; font-weight: bold; cursor: pointer; border: none; margin-top:10px;">Hey! Billy! Play Again?</button>
+</div>
+
+<div class="controls">
+    <button id="rollBtn" onclick="executeRoll()" disabled>PREPARING...</button>
+</div>
+
+<script>
+    let bank = 0, chain = ['D4','D6','D8','D10','D12','D20','D100'], idx = 0, last = 0, time = 300;
+    let active = false, isDraining = false, isWon = false, currentCells = null, manualBankReady = false;
+    let hist = [], numberFreq = {}, achievements = {maxList: [], luckyNums: [], twins: 0, flushes: 0};
+    let lastWasFlush = false;
+    const maxes = {D4:4, D6:6, D8:8, D10:10, D12:12, D20:20, D100:10};
+
+    function startGame() {
+        document.getElementById('start-screen').style.display = 'none';
+        prepareNextSequence();
+    }
+
+    function roll(type) {
+        if(type === 'D100') return [10,20,30,40,50,60,70,80,90,100][Math.floor(Math.random()*10)];
+        return Math.floor(Math.random() * maxes[type]) + 1;
+    }
+
+    function showAlert(txt) {
+        const a = document.getElementById('bonus-alert');
+        a.innerText = txt; a.style.display = 'block';
+        setTimeout(() => a.style.display = 'none', 3000);
+    }
+
+    async function prepareNextSequence(isFromBank = false) {
+        if(isWon) return;
+        
+        const type = isFromBank ? 'D100' : chain[idx];
+        const board = document.getElementById('game-board');
+        const col = document.createElement('div');
+        col.className = 'sequence-column';
+        col.innerHTML = `<div style="text-align:center;font-size:0.5rem;color:#444">${isFromBank ? 'D100 Rolls' : type}</div>`;
+        
+        currentCells = [];
+        for(let i=0; i<7; i++){
+            const c = document.createElement('div');
+            c.className = i === 6 ? 'die-cell final' : 'die-cell';
+            c.innerText = '-'; col.appendChild(c); currentCells.push(c);
+        }
+        const pDiv = document.createElement('div');
+        pDiv.className = 'col-prob'; pDiv.innerText = '-';
+        col.appendChild(pDiv);
+        board.appendChild(col);
+        board.scrollLeft = board.scrollWidth;
+
+        for(let i=0; i<6; i++) {
+            let val = last + (i + 1);
+            currentCells[i].innerText = val;
+            currentCells[i].classList.add('active');
+            updateFreq(val);
+            await new Promise(r => setTimeout(r, 300));
+        }
+
+        const btn = document.getElementById('rollBtn');
+        if (isDraining) {
+             executeRoll();
+        } else if (isFromBank) {
+            btn.innerText = `ROLL D100 (+${bank})`;
+            manualBankReady = true;
+            btn.disabled = false;
+        } else {
+            btn.innerText = `ROLL ${type}`;
+            manualBankReady = false;
+            btn.disabled = false;
+        }
+    }
+
+    async function executeRoll() {
+        if(!active) startTimer();
+        
+        const btn = document.getElementById('rollBtn');
+        btn.disabled = true;
+        
+        const isCurrentlyBank = manualBankReady || isDraining;
+        const type = isCurrentlyBank ? 'D100' : chain[idx];
+        const finalDie = currentCells[6];
+
+        for(let i=0; i<15; i++) {
+            finalDie.innerText = roll(type);
+            finalDie.classList.add('active');
+            await new Promise(r => setTimeout(r, 80));
+        }
+
+        let res = roll(type);
+        finalDie.innerText = res;
+        finalDie.classList.add('active');
+        updateFreq(res);
+        last = res;
+
+        let rowData = [];
+        for(let i=0; i<6; i++) rowData.push(parseInt(currentCells[i].innerText));
+        rowData.push(res);
+
+        if (type === 'D100' && res === 100) {
+            finalDie.classList.add('win-100');
+            document.getElementById('game-board').classList.add('shake');
+            setTimeout(() => document.getElementById('game-board').classList.remove('shake'), 500);
+        }
+
+        let triggeredBonus = checkRules(rowData, type);
+
+        let probVal = (type === 'D100') ? 10 : (100 / maxes[type]);
+        const pDiv = finalDie.parentElement.querySelector('.col-prob');
+        pDiv.innerText = probVal.toFixed(2) + "%";
+        if (triggeredBonus) pDiv.classList.add('show');
+
+        if(!isCurrentlyBank) idx = (idx + 1) % chain.length;
+        
+        updateUI();
+
+        await new Promise(r => setTimeout(r, 1500));
+
+        if (isWon) {
+            showEnd(true);
+        } else if (bank > 0 && (idx === 0 || isDraining)) {
+            if (!isDraining) bank--; 
+            updateUI();
+            prepareNextSequence(true);
+        } else if (isDraining && bank === 0) {
+            showEnd(false);
+        } else {
+            prepareNextSequence(false);
+        }
+    }
+
+    function updateFreq(val) {
+        numberFreq[val] = (numberFreq[val] || 0) + 1;
+        if (numberFreq[val] % 7 === 0 && numberFreq[val] > 0) { 
+            bank += 1; 
+            achievements.luckyNums.push(val);
+            showAlert(`LUCKY ${val}! +1 ROLL`);
+            return true;
+        }
+        return false;
+    }
+
+    function checkRules(row, type) {
+        let bonus = false;
+        const final = row[6];
+
+        if (final === row[5] + 1) {
+            bonus = true;
+            achievements.flushes++;
+            let flushBonus = (type === 'D20' || type === 'D100') ? 10 : (type === 'D12' ? 3 : 1);
+            bank += flushBonus;
+            showAlert(`FLUSH! +${flushBonus} ROLLS`);
+            if (lastWasFlush) {
+                let flowBonus = (type === 'D20' || type === 'D100') ? 100 : 50;
+                bank += flowBonus;
+                showAlert(`FLUSH FLOW! +${flowBonus} ROLLS`);
+            }
+            lastWasFlush = true;
+        } else { lastWasFlush = false; }
+
+        if (hist.length >= 1) {
+            const lastRow = hist[hist.length - 1];
+            if (final === lastRow[6]) {
+                bonus = true;
+                achievements.twins++;
+                let b = (type === 'D20' || type === 'D100') ? 10 : (type === 'D12' ? 3 : 1);
+                bank += b;
+                showAlert(`TWIN DIE! +${b} ROLLS`);
+                if (hist.length >= 2) {
+                    const secondLastRow = hist[hist.length - 2];
+                    if (final === lastRow[6] && final === secondLastRow[6]) {
+                        if (['D12', 'D20', 'D100'].includes(type)) isWon = true;
+                    }
+                }
+            }
+        }
+        
+        hist.push([...row]);
+
+        if (type !== 'D100' && final === maxes[type]) {
+            bonus = true;
+            document.getElementById('game-board').lastChild.querySelectorAll('.die-cell')[6].classList.add('max-hit');
+            achievements.maxList.push(type);
+            let b = (type === 'D20' ? 3 : 1);
+            bank += b;
+            showAlert(`MAX ${type}! +${b} ROLLS`);
+        }
+
+        if (type === 'D100') {
+            if (final >= 50) {
+                bonus = true;
+                bank += 1;
+                if (final !== 100) showAlert("50+! ROLL REFUNDED");
+            }
+            if (final === 100) isWon = true;
+        }
+        return bonus;
+    }
+
+    function updateUI() {
+        document.getElementById('bank').innerText = bank;
+    }
+
+    function startTimer() {
+        active = true;
+        let itv = setInterval(() => {
+            if(isWon) { clearInterval(itv); return; }
+            time--;
+            let m = Math.floor(time/60), s = time%60;
+            document.getElementById('timer').innerText = `${m}:${s < 10 ? '0' : ''}${s}`;
+            if(time <= 0) { clearInterval(itv); isDraining = true; }
+        }, 1000);
+    }
+
+    function showEnd(win) {
+        const screen = document.getElementById('end-screen');
+        screen.style.display = 'block';
+        const used = 300 - time;
+        if (win) {
+            document.getElementById('end-title').innerText = "One step closer to a billionaire!";
+            document.getElementById('end-title').style.color = "var(--accent)";
+        } else {
+            document.getElementById('end-title').innerText = "Oh! Poor Billy!";
+            document.getElementById('end-title').style.color = "var(--danger)";
+        }
+        document.getElementById('end-stats').innerHTML = `TIME: ${Math.floor(used/60)}m ${used%60}s | REMAINING ROLLS: ${bank}`;
+        let achHtml = "📊 Achievements:<br>";
+        let hasAchs = false;
+        if (achievements.maxList.length > 0) {
+            hasAchs = true;
+            const counts = achievements.maxList.reduce((a, b) => { a[b] = (a[b] || 0) + 1; return a; }, {});
+            achHtml += `- Max Rolls: ${Object.entries(counts).map(([d, c]) => `${c}-${d}`).join(' & ')}<br>`;
+        }
+        if (achievements.luckyNums.length > 0) { hasAchs = true; achHtml += `- Lucky Number: ${[...new Set(achievements.luckyNums)].join(', ')}<br>`; }
+        if (achievements.flushes > 0) { hasAchs = true; achHtml += `- Flushes Hit: ${achievements.flushes}<br>`; }
+        if (achievements.twins > 0) { hasAchs = true; achHtml += `- Twin Matches: ${achievements.twins}<br>`; }
+        document.getElementById('achievements').innerHTML = (hasAchs ? achHtml : "") + `- Total Rows: ${hist.length}`;
+    }
+</script>
+</body>
+</html>
