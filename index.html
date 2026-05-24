@@ -114,7 +114,7 @@
 <div class="hud">
     <div class="hud-item"><span class="hud-label">TIME</span><span class="hud-val" id="timer">05:00</span></div>
     <div class="hud-item"><span class="hud-label">BANK</span><span class="hud-val" id="bank" style="color:var(--accent)">0</span></div>
-    <div class="hud-item"><span class="hud-label">POINTS</span><span class="hud-val" id="session-points" style="color:var(--boss)">0</span></div>
+    <div class="hud-item"><span class="hud-label">WEALTH</span><span class="hud-val" id="hud-wealth" style="color:var(--boss)">$0</span></div>
 </div>
 
 <div id="game-board"></div>
@@ -144,6 +144,7 @@
     
     document.getElementById('total-wealth-start').innerText = `Net Worth: $${globalWealth.toLocaleString()} | Saved Rolls: ${bank}`;
     document.getElementById('bank').innerText = bank;
+    document.getElementById('hud-wealth').innerText = "$" + globalWealth.toLocaleString();
 
     const maxes = {D4:4, D6:6, D8:8, D10:10, D12:12, D20:20, D100:10};
 
@@ -163,7 +164,7 @@
         setTimeout(() => a.style.display = 'none', 3000);
     }
 
-    // New Helper: Centralizes earning rolls and points
+    // New Helper: 1 Extra Roll = Exactly 100 Points
     function earnRolls(amount, message) {
         bank += amount;
         sessionPoints += (amount * 100);
@@ -312,14 +313,14 @@
 
         // RULE: D100 Logic
         if (type === 'D100') {
-            if (final >= 50) {
+            if (final >= 50 && final !== 100) {
                 bonus = true; 
-                earnRolls(1, "Rolled 50+, 1 extra roll");
+                earnRolls(1, "Rolled +50, 1 extra roll");
             }
             if (final === 100) { isWon = true; }
         }
 
-        // RULE: Lucky 66
+        // RULE: Lucky 66 (Only triggers if final die hits exactly 66)
         if (final === 66) {
             bonus = true;
             achievements.lucky66++;
@@ -331,7 +332,8 @@
 
     function updateUI() {
         document.getElementById('bank').innerText = bank;
-        document.getElementById('session-points').innerText = sessionPoints.toLocaleString();
+        // HUD cleanly tracks total global wealth + current session earned wealth
+        document.getElementById('hud-wealth').innerText = "$" + (globalWealth + sessionPoints).toLocaleString();
     }
 
     function startTimer() {
@@ -350,7 +352,6 @@
         document.getElementById('end-title').innerText = win ? "One step closer to a billionaire!" : "Oh! Poor Billy!";
         document.getElementById('end-title').style.color = win ? "var(--accent)" : "var(--danger)";
 
-        // Build Achievements First
         let achHtml = "📊 Achievements:<br>";
         if (achievements.maxList.length > 0) {
             const counts = achievements.maxList.reduce((a, b) => { a[b] = (a[b] || 0) + 1; return a; }, {});
@@ -363,9 +364,10 @@
 
         // The Wind-Down Tally Animation
         let displayTime = time;
-        let displayPoints = sessionPoints;
-        let finalTimePoints = time * (100 / 60); 
-        let targetPoints = sessionPoints + finalTimePoints;
+        let finalTimePoints = time * (100 / 60); // 1.66 points per second remaining
+        
+        let currentDisplayWealth = globalWealth + sessionPoints;
+        let finalTargetWealth = currentDisplayWealth + finalTimePoints;
         
         let ticks = 50; 
         let timePerTick = displayTime / ticks;
@@ -375,22 +377,24 @@
         let tallyItv = setInterval(() => {
             currentTick++;
             displayTime -= timePerTick;
-            displayPoints += ptsPerTick;
+            currentDisplayWealth += ptsPerTick;
 
             if (displayTime < 0) displayTime = 0;
 
             let m = Math.floor(displayTime/60), s = Math.floor(displayTime%60);
             document.getElementById('end-stats').innerHTML = `TIME REMAINING: ${m}:${s < 10 ? '0' : ''}${s} | SAVED ROLLS: ${bank}`;
-            document.getElementById('point-summary').innerHTML = `<span style="color:#aaa;">Tallying Points: ${Math.round(displayPoints).toLocaleString()}...</span>`;
+            document.getElementById('point-summary').innerHTML = `<span style="color:#aaa;">Tallying Time Bonus...</span><br><span style="color:var(--boss)">Net Worth: $${Math.round(currentDisplayWealth).toLocaleString()}</span>`;
 
             if (currentTick >= ticks) {
                 clearInterval(tallyItv);
-                globalWealth += Math.round(targetPoints);
+                
+                // Finalize Global Wealth
+                globalWealth = Math.round(finalTargetWealth);
                 localStorage.setItem('billyWealth', globalWealth);
                 
                 document.getElementById('end-stats').innerHTML = `TIME REMAINING: 0:00 | SAVED ROLLS: ${bank}`;
                 document.getElementById('point-summary').innerHTML = `
-                    Total Points Earned: +${Math.round(targetPoints).toLocaleString()}<br>
+                    Time Bonus: +${Math.round(finalTimePoints).toLocaleString()}<br>
                     <span style="color:var(--boss)">Net Worth: $${globalWealth.toLocaleString()}</span>
                 `;
             }
