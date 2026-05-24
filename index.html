@@ -97,7 +97,7 @@
             text-align: center; z-index: 3000; width: 360px; box-shadow: 0 0 100px #000;
         }
         .achievement-list { font-size: 0.8rem; color: #aaa; text-align: left; margin: 10px auto; width: 95%; line-height: 1.4;}
-        .points-box { color: var(--accent); font-weight: bold; border-top: 1px solid #333; padding-top: 10px; margin-top: 10px; }
+        .points-box { color: var(--accent); font-weight: bold; border-top: 1px solid #333; padding-top: 10px; margin-top: 10px; font-size: 1.1rem; }
     </style>
 </head>
 <body>
@@ -122,7 +122,7 @@
 <div id="end-screen">
     <h2 style="margin:0; color:var(--boss)">Hey, Billy!</h2>
     <h1 id="end-title" style="margin:5px 0; font-size: 1.1rem;">One step closer to a billionaire!</h1>
-    <div id="end-stats" style="font-size: 0.8rem; font-weight: bold;"></div>
+    <div id="end-stats" style="font-size: 0.9rem; font-weight: bold; color: var(--accent);"></div>
     <div id="achievements" class="achievement-list"></div>
     <div class="points-box" id="point-summary"></div>
     <button onclick="location.reload()" style="background:var(--accent); color:#000; padding: 12px 25px; border-radius: 8px; font-weight: bold; cursor: pointer; border: none; margin-top:15px;">Hey! Billy! Play Again?</button>
@@ -133,13 +133,19 @@
 </div>
 
 <script>
-    let bank = 0, chain = ['D4','D6','D8','D10','D12','D20','D100'], idx = 0, last = 0, time = 300;
+    let chain = ['D4','D6','D8','D10','D12','D20','D100'], idx = 0, last = 0, time = 300;
     let active = false, isDraining = false, isWon = false, currentCells = null, manualBankReady = false;
-    let hist = [], numberFreq = {}, achievements = {maxList: [], luckyNums: [], twins: 0, flushes: 0, d100rolls: 0};
+    let hist = [], achievements = {maxList: [], twins: 0, flushes: 0, lucky66: 0};
     let lastWasFlush = false, sessionPoints = 0;
 
+    // Persistent Storage Setup
     let globalWealth = parseInt(localStorage.getItem('billyWealth')) || 0;
-    document.getElementById('total-wealth-start').innerText = `Net Worth: $${globalWealth.toLocaleString()}`;
+    let bank = parseInt(localStorage.getItem('billyBank')) || 0;
+    
+    document.getElementById('total-wealth-start').innerText = `Net Worth: $${globalWealth.toLocaleString()} | Saved Rolls: ${bank}`;
+    document.getElementById('bank').innerText = bank;
+
+    const maxes = {D4:4, D6:6, D8:8, D10:10, D12:12, D20:20, D100:10};
 
     function startGame() {
         document.getElementById('start-screen').style.display = 'none';
@@ -155,6 +161,15 @@
         const a = document.getElementById('bonus-alert');
         a.innerText = txt; a.style.display = 'block';
         setTimeout(() => a.style.display = 'none', 3000);
+    }
+
+    // New Helper: Centralizes earning rolls and points
+    function earnRolls(amount, message) {
+        bank += amount;
+        sessionPoints += (amount * 100);
+        localStorage.setItem('billyBank', bank);
+        showAlert(message);
+        updateUI();
     }
 
     async function prepareNextSequence(isFromBank = false) {
@@ -181,8 +196,7 @@
             let val = last + (i + 1);
             currentCells[i].innerText = val;
             currentCells[i].classList.add('active');
-            updateFreq(val);
-            await new Promise(r => setTimeout(r, 300));
+            await new Promise(r => setTimeout(r, 200));
         }
 
         const btn = document.getElementById('rollBtn');
@@ -203,9 +217,7 @@
         const type = (manualBankReady || isDraining) ? 'D100' : chain[idx];
         const finalDie = currentCells[6];
 
-        if(type === 'D100') achievements.d100rolls++;
-
-        for(let i=0; i<15; i++) {
+        for(let i=0; i<12; i++) {
             finalDie.innerText = roll(type);
             finalDie.classList.add('active');
             await new Promise(r => setTimeout(r, 80));
@@ -214,7 +226,6 @@
         let res = roll(type);
         finalDie.innerText = res;
         finalDie.classList.add('active');
-        updateFreq(res);
         last = res;
 
         if (type === 'D100' && res === 100) {
@@ -235,12 +246,15 @@
 
         if(!manualBankReady && !isDraining) idx = (idx + 1) % chain.length;
         updateUI();
-        await new Promise(r => setTimeout(r, 1500));
+        await new Promise(r => setTimeout(r, 1200));
 
         if (isWon) {
             showEnd(true);
         } else if (bank > 0 && (idx === 0 || isDraining)) {
-            if (!isDraining) bank--; 
+            if (!isDraining) {
+                bank--; 
+                localStorage.setItem('billyBank', bank);
+            }
             updateUI();
             prepareNextSequence(true);
         } else if (isDraining && bank === 0) {
@@ -250,82 +264,74 @@
         }
     }
 
-    function updateFreq(val) {
-        numberFreq[val] = (numberFreq[val] || 0) + 1;
-        if (numberFreq[val] % 7 === 0 && numberFreq[val] > 0) { 
-            bank += 1; achievements.luckyNums.push(val);
-            showAlert(`LUCKY ${val}! +1 ROLL`);
-            sessionPoints += 50;
-            return true;
-        }
-        return false;
-    }
-
     function checkRules(row, type) {
         let bonus = false;
         const final = row[6];
 
+        // RULE: Flush
         if (final === row[5] + 1) {
             bonus = true;
             achievements.flushes++;
-            sessionPoints += 50;
             let flushBonus = (type === 'D20' || type === 'D100') ? 10 : (type === 'D12' ? 3 : 1);
-            bank += flushBonus;
-            showAlert(`FLUSH! +${flushBonus} ROLLS`);
+            earnRolls(flushBonus, `FLUSH! +${flushBonus} ROLLS`);
+            
             if (lastWasFlush) {
-                sessionPoints += 500;
                 let flowBonus = (type === 'D20' || type === 'D100') ? 100 : 50;
-                bank += flowBonus;
-                showAlert(`FLUSH FLOW! +${flowBonus} ROLLS`);
+                setTimeout(() => earnRolls(flowBonus, `FLUSH FLOW! +${flowBonus} ROLLS`), 1500);
             }
             lastWasFlush = true;
         } else { lastWasFlush = false; }
 
+        // RULE: Twins/Triples
         if (hist.length >= 1) {
             const lastRow = hist[hist.length - 1];
             if (final === lastRow[6]) {
                 bonus = true;
                 if (hist.length >= 2 && final === hist[hist.length-2][6]) {
-                    sessionPoints += 1000;
-                    showAlert("TRIPLE THREAT!");
                     let tB = (type === 'D10' || type === 'D12') ? 10 : (type === 'D20' || type === 'D100' ? 77 : 5);
-                    bank += tB;
+                    earnRolls(tB, "TRIPLE THREAT!");
                     if (['D12', 'D20', 'D100'].includes(type)) isWon = true;
                 } else {
-                    sessionPoints += 100;
                     achievements.twins++;
                     let tB = (type === 'D20' || type === 'D100') ? 10 : (type === 'D12' ? 3 : 1);
-                    bank += tB;
-                    showAlert(`TWIN DIE! +${tB} ROLLS`);
+                    earnRolls(tB, `TWIN DIE! +${tB} ROLLS`);
                 }
             }
         }
         hist.push([...row]);
+
+        // RULE: Max Roll
         if (type !== 'D100' && final === maxes[type]) {
             bonus = true;
-            sessionPoints += 200;
             const currentCols = document.querySelectorAll('.sequence-column');
             currentCols[currentCols.length - 1].querySelectorAll('.die-cell')[6].classList.add('max-hit');
             achievements.maxList.push(type);
             let b = (type === 'D20' ? 3 : 1);
-            bank += b;
-            showAlert(`MAX ${type}! +${b} ROLLS`);
+            earnRolls(b, `MAX ${type}! +${b} ROLLS`);
         }
+
+        // RULE: D100 Logic
         if (type === 'D100') {
-            sessionPoints += 100;
             if (final >= 50) {
-                bonus = true; bank += 1;
-                if (final !== 100) showAlert("50+! ROLL REFUNDED");
+                bonus = true; 
+                earnRolls(1, "Rolled 50+, 1 extra roll");
             }
-            if (final === 100) { sessionPoints += 5000; isWon = true; }
+            if (final === 100) { isWon = true; }
         }
+
+        // RULE: Lucky 66
+        if (final === 66) {
+            bonus = true;
+            achievements.lucky66++;
+            earnRolls(3, "LUCKY 66! +3 ROLLS");
+        }
+
         return bonus;
     }
 
     function updateUI() {
         document.getElementById('bank').innerText = bank;
-        let timePoints = Math.max(0, Math.floor(time / 60)) * 100;
-        document.getElementById('session-points').innerText = (sessionPoints + timePoints).toLocaleString();
+        document.getElementById('session-points').innerText = sessionPoints.toLocaleString();
     }
 
     function startTimer() {
@@ -336,36 +342,60 @@
             let m = Math.floor(time/60), s = time%60;
             document.getElementById('timer').innerText = `${m}:${s < 10 ? '0' : ''}${s}`;
             if(time <= 0) { clearInterval(itv); isDraining = true; }
-            updateUI();
         }, 1000);
     }
 
     function showEnd(win) {
-        const screen = document.getElementById('end-screen');
-        screen.style.display = 'block';
-        const timePoints = Math.max(0, Math.floor(time / 60)) * 100;
-        const totalSessionPoints = sessionPoints + timePoints;
-        globalWealth += totalSessionPoints;
-        localStorage.setItem('billyWealth', globalWealth);
+        document.getElementById('end-screen').style.display = 'block';
+        document.getElementById('end-title').innerText = win ? "One step closer to a billionaire!" : "Oh! Poor Billy!";
+        document.getElementById('end-title').style.color = win ? "var(--accent)" : "var(--danger)";
 
-        document.getElementById('end-stats').innerHTML = `TIME USED: ${Math.floor((300-time)/60)}m ${(300-time)%60}s | REMAINING ROLLS: ${bank}`;
+        // Build Achievements First
         let achHtml = "📊 Achievements:<br>";
         if (achievements.maxList.length > 0) {
             const counts = achievements.maxList.reduce((a, b) => { a[b] = (a[b] || 0) + 1; return a; }, {});
             achHtml += `- Max Rolls: ${Object.entries(counts).map(([d, c]) => `${c}-${d}`).join(' & ')}<br>`;
         }
-        if (achievements.luckyNums.length > 0) achHtml += `- Lucky Number: ${[...new Set(achievements.luckyNums)].join(', ')}<br>`;
+        if (achievements.lucky66 > 0) achHtml += `- Lucky 66 Hit: ${achievements.lucky66}<br>`;
         if (achievements.flushes > 0) achHtml += `- Flushes Hit: ${achievements.flushes}<br>`;
         if (achievements.twins > 0) achHtml += `- Twin Matches: ${achievements.twins}<br>`;
         document.getElementById('achievements').innerHTML = achHtml + `- Total Rows: ${hist.length}`;
+
+        // The Wind-Down Tally Animation
+        let displayTime = time;
+        let displayPoints = sessionPoints;
+        let finalTimePoints = time * (100 / 60); 
+        let targetPoints = sessionPoints + finalTimePoints;
         
-        document.getElementById('point-summary').innerHTML = `
-            Bonus Points: +${sessionPoints.toLocaleString()} pts<br>
-            Time Bonus: +${timePoints.toLocaleString()} pts<br>
-            <span style="color:var(--boss)">Billy's Net Worth: $${globalWealth.toLocaleString()}</span>
-        `;
+        let ticks = 50; 
+        let timePerTick = displayTime / ticks;
+        let ptsPerTick = finalTimePoints / ticks;
+        let currentTick = 0;
+
+        let tallyItv = setInterval(() => {
+            currentTick++;
+            displayTime -= timePerTick;
+            displayPoints += ptsPerTick;
+
+            if (displayTime < 0) displayTime = 0;
+
+            let m = Math.floor(displayTime/60), s = Math.floor(displayTime%60);
+            document.getElementById('end-stats').innerHTML = `TIME REMAINING: ${m}:${s < 10 ? '0' : ''}${s} | SAVED ROLLS: ${bank}`;
+            document.getElementById('point-summary').innerHTML = `<span style="color:#aaa;">Tallying Points: ${Math.round(displayPoints).toLocaleString()}...</span>`;
+
+            if (currentTick >= ticks) {
+                clearInterval(tallyItv);
+                globalWealth += Math.round(targetPoints);
+                localStorage.setItem('billyWealth', globalWealth);
+                
+                document.getElementById('end-stats').innerHTML = `TIME REMAINING: 0:00 | SAVED ROLLS: ${bank}`;
+                document.getElementById('point-summary').innerHTML = `
+                    Total Points Earned: +${Math.round(targetPoints).toLocaleString()}<br>
+                    <span style="color:var(--boss)">Net Worth: $${globalWealth.toLocaleString()}</span>
+                `;
+            }
+        }, 40);
     }
-    const maxes = {D4:4, D6:6, D8:8, D10:10, D12:12, D20:20, D100:10};
 </script>
 </body>
 </html>
