@@ -214,8 +214,8 @@
         const col = document.createElement('div');
         col.className = 'sequence-column';
         
-        // BIGGER, CLEARER COLUMN LABELS
-        col.innerHTML = `<div style="text-align:center;font-size:0.85rem;color:#888;font-weight:bold;margin-bottom:4px;">${isFromBank ? 'D100 Rolls' : type}</div>`;
+        // BIGGER, CLEARER COLUMN LABELS - Just showing the dice type
+        col.innerHTML = `<div style="text-align:center;font-size:0.85rem;color:#888;font-weight:bold;margin-bottom:4px;">${type}</div>`;
         
         currentCells = [];
         for(let i=0; i<7; i++){
